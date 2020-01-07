@@ -20,6 +20,7 @@ library(wSVM)
 # library(DynTxRegime)
 library(DTRlearn2)
 library(CVXR)
+library(rgenoud)
 
 delta.tilde.prob <- function(x, alphas) {
   # x: covariate vecter or matrix including intercep 1
@@ -306,24 +307,108 @@ weight_tuned_entr <- function(tols, x.in.rct, x.in.rwe, prop=0.5, smps=10) {
   }
 }
 
-est.contrast <- function(a, x, y, delta.tilde.is.one.ind, prob.one,  meth=1) {
+est.contrast <- function(a, x, y, delta.tilde.is.one.ind, prob.one, meth=1) {
   ## estimate contrast function
   if (meth==1) {
     y.star.hat <- a*y/prob.one - (1-a)*y/(1-prob.one) # outcome adjusted
   } else if (meth==2) {
     N<-length(y)
-    x<-as.matrix(x[delta.tilde.is.one.ind, ])
+    x<-as.matrix(x[delta.tilde.is.one.ind,]); x <- x[,-1]
     y <- y[delta.tilde.is.one.ind]
-    loc.a1<-which(a[delta.tilde.is.one.ind]==1)
-    loc.a0<-which(a[delta.tilde.is.one.ind]==0)
-    dat <- data.frame(cbind(y, x))
-    ## use random forest to est Q
-    fit1 <- ranger(y~., data=dat[loc.a1,])
-    reg.mu1.rf <- predict(fit1, data = dat)$predictions
-    fit0 <- ranger(y~., data=dat[loc.a0,])
-    reg.mu0.rf <- predict(fit0, data = dat)$predictions
+    a <- a[delta.tilde.is.one.ind]
+    
+    # loc.a1<-which(a==1)
+    # loc.a0<-which(a==0)
+    # dat <- data.frame(cbind(y, x))
+    # ## use random forest to est Q
+    # fit1 <- ranger(y~., data=dat[loc.a1,])
+    # reg.mu1.rf <- predict(fit1, data = dat)$predictions
+    # fit0 <- ranger(y~., data=dat[loc.a0,])
+    # reg.mu0.rf <- predict(fit0, data = dat)$predictions
+    # y.star.hat <- rep(0, N)
+    # y.star.hat[delta.tilde.is.one.ind] <- reg.mu1.rf - reg.mu0.rf
+    
+    n <- length(delta.tilde.is.one.ind)
+    dat <- data.frame(cbind(y,x,a))
+    fit <- ranger(y~., data=dat)
+    a <- rep(1,n); dat1 <- data.frame(cbind(y,x,a))
+    reg.mu1.rf <- predict(fit, data = dat1)$predictions
+    a <- rep(0,n); dat0 <- data.frame(cbind(y,x,a))
+    reg.mu0.rf <- predict(fit, data = dat0)$predictions
     y.star.hat <- rep(0, N)
     y.star.hat[delta.tilde.is.one.ind] <- reg.mu1.rf - reg.mu0.rf
+  } else if (meth==3) {
+    N<-length(y)
+    x<-as.matrix(x[delta.tilde.is.one.ind,]); x <- x[,-1]
+    y <- y[delta.tilde.is.one.ind]
+    A <- a[delta.tilde.is.one.ind]
+    n <- length(delta.tilde.is.one.ind)
+    aipw <- v.aipw(x,y,A)$aipw
+    tau_jk <- rep(0, n)
+    for (i in 1:n) {
+      out <- v.aipw(x[-i,],y[-i],A[-i])
+      tau_jk[i] <- n*aipw-(n-1)* out$aipw
+    }
+    y.star.hat <- rep(0, N)
+    y.star.hat[delta.tilde.is.one.ind] <- tau_jk
   }
   return(y.star.hat)
+}
+
+## Value search methods involve maximization of nonsmooth objective functions, 
+## require special techniques; e.g., a genetic algorithm (as in R rgenoud)
+fn <- function(Betas, x.in.rct, y.star.hat, delta.tilde.is.one.ind, weight, obj.value=TRUE) {
+  ## obj.value=TRUE: ojective function is for value; o.w., for optimal action rate
+  Betas <- as.matrix(Betas, length(Betas), 1)
+  obj <- ((x.in.rct %*% Betas > 0) - ( y.star.hat[delta.tilde.is.one.ind] > 0))**2 * c(weight)
+  if (obj.value) obj = obj * abs(y.star.hat[delta.tilde.is.one.ind])
+  obj <- sum(obj)
+  return(obj)
+}
+
+v.aipw <- function(x,y,A,psm=1,Qm=2) {
+  A.temp <- A
+  ## aipw
+  if (psm==1) {
+    phat <- mean(A)
+  } else if (psm==2) {
+    ## use logistic regression to est PS
+    alpha.est<-glm(A~x,family="binomial")$coeff
+    lpshat<-cbind(1,x)%*%alpha.est
+    phat<-1/(1+exp(-lpshat ))
+  } 
+  # else if (psm==3) {
+  #   ## use gam to est PS
+  #   Gam.object <- gam(A ~ s(x1) + s(x2) + s(x3) + s(x4), family=binomial, data=dat2)
+  #   phat = predict(Gam.object, type="response", newdata=dat2)
+  # }
+  dat2 <- data.frame(cbind(y, x, A,  A*x))
+  n <- length(y)
+  if (Qm==1) {
+    ## use RF to est Q in aipw
+    dat <- data.frame(cbind(y,x,A))
+    fit <- ranger(y~., data=dat)
+    A <- A*0+1; dat1 <- data.frame(cbind(y,x,A))
+    reg.mu1 <- predict(fit, data = dat1)$predictions
+    A <- A*0; dat0 <- data.frame(cbind(y,x,A))
+    reg.mu0 <- predict(fit, data = dat0)$predictions
+  } else if (Qm==2) {
+    ## use linear model to est Q in aipw
+    lin <- lm(y ~ ., data=dat2)
+    newdf <- data.frame(x, rep(0, n), x*0)
+    names(newdf) <- names(dat2)[-1]
+    reg.mu0 <- predict(lin, newdata = newdf)
+    newdf <-  data.frame(x, rep(1, n), x)
+    names(newdf) <- names(dat2)[-1]
+    reg.mu1 <- predict(lin, newdata = newdf)
+  } 
+  # else if (Qm==3) {
+  #   ## use GAM to est Q in aipw
+  #   reg.mu1 <- reg.mu1.gam
+  #   reg.mu0 <- reg.mu0.gam
+  # }
+  A <- A.temp
+  psi.aug <- y*A/phat-y*(1-A)/(1-phat)+(reg.mu1*(1-A/phat)-reg.mu0*(1-(1-A)/(1-phat)) )
+  aipw<-mean(psi.aug)
+  return(list(aipw=aipw))
 }
