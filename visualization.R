@@ -1,5 +1,7 @@
 ## visualization for the boxplots
 library(ggplot2)
+path <- "/Users/lwu9/Documents/transfer_learner_dtr/"
+setwd(path)
 ggplot(Results, aes(x=weight, y=Value.MSE, fill=rule)) + 
   facet_wrap( ~ n, ncol = 1) +# theme(legend.position = "none") +
   geom_boxplot()
@@ -138,47 +140,75 @@ ggplot(df, aes(x=weight, y=Value.MSE, fill=rule)) +
   geom_boxplot()
 
 
-###### Note: when method is "tree", there is no need to use different y.hat.meth, since it doesn't need estimated contrasts
-library(ggplot2)
-path <- "S:/Documents/lab2018/transfer learning of dtr/Intergrative-learning--master/Intergrative-learning--master/"
-setwd(path)
-for (dbn in c("similar", "diff")) {
-  for (method in c("linear.LS", "linear.VS")) {
-    load(paste0(path,"results_cv_nfold30_method",method,"_",dbn,"_dist.Rdata"))
-    Value.MSE <- rule <- n <- weight <- contrast.est.meth <- alpha1s <- c()
-    for (i in 1:length(Results)) {
-      # for (method in c("linear","tree")) {
-      results <- Results[[i]]
-      learned.rule.mse <- matrix(unlist(results[,1]), byrow = T, ncol=4)
-      cv.rule.mse <- unlist(results[,3])
-      nn <- length(cv.rule.mse)
-      Value.MSE <- c(Value.MSE, learned.rule.mse[,1], learned.rule.mse[,2],
-                     learned.rule.mse[,3], learned.rule.mse[,4], cv.rule.mse)
-      n <- c(n, rep(round(mean(unlist(results[,4]))), nn*(dim(learned.rule.mse)[2]+1)))
-      weight <- c(weight, rep("unweight",nn),rep("w1",nn),rep("w2",nn), rep("nonpara",nn),rep("cv",nn))
-      Name <- names(Results)[i]
-      alpha1 <- paste0("alpha1=-", stringr::str_extract(Name, "\\d+"))
-      alpha1s <- c(alpha1s, rep(alpha1,  nn*(dim(learned.rule.mse)[2]+1)))
-      yhatmeth <- paste0("contrast.est",tail(strsplit(Name,split='')[[1]],1))
-      contrast.est.meth <- c(contrast.est.meth, rep(yhatmeth, nn*(dim(learned.rule.mse)[2]+1)))
-      # boxplot(cv.rule.mse, main=paste0("n=", round(mean(unlist(results[,3])))), ylim=c(0,11))
-      # }
-    }
-    weight <- factor(weight, levels = c("unweight","w1","w2","nonpara","cv"))
-    contrast.est.meth <- factor(contrast.est.meth, levels=c("contrast.est1","contrast.est2","contrast.est3"))
-    df <- data.frame(weight = weight, Value.MSE=Value.MSE, n=n, contrast.est.meth=contrast.est.meth,alpha1=alpha1s)
-    gp <- ggplot(df, aes(x=weight, y=Value.MSE, fill=contrast.est.meth)) + scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9"))+
-      facet_wrap( ~ alpha1, nrow = 1) + geom_boxplot() +ggtitle(paste0(method,"; ", dbn, " dbn"))+
-      ## check how to add mean for each box
-      stat_summary(fun.y = mean, color = "red", position = position_dodge(0.75),
-                   geom = "point", shape = 20, size = 2.5,
-                   show.legend = FALSE) ## add mean value in boxplot
-    print(gp)
-    ggsave(paste0(method,"_", dbn, ".png"))
+#path <- "S:/Documents/lab2018/transfer learning of dtr/Intergrative-learning--master/Intergrative-learning--master/"
+path <- "/Users/lwu9/Documents/transfer_learner_dtr/"
+for (method in c("linear.LS","linear.VS","tree")) {
+  load(paste0(path,"results_cv_nfold30_method",method,"_diff_dist.Rdata"))
+  Value.MSE <- rule <- n <- weight <- contrast.est.meth <- alpha1s <- c()
+  for (i in 1:length(Results)) {
+    # for (method in c("linear","tree")) {
+    results <- Results[[i]]
+    learned.rule.mse <- matrix(unlist(results[,1]), byrow = T, ncol=4)
+    cv.rule.mse <- unlist(results[,3])
+    nn <- length(cv.rule.mse)
+    Value.MSE <- c(Value.MSE, learned.rule.mse[,1], learned.rule.mse[,2],
+                   learned.rule.mse[,3], learned.rule.mse[,4], cv.rule.mse)
+    n <- c(n, rep(round(mean(unlist(results[,4]))), nn*(dim(learned.rule.mse)[2]+1)))
+    weight <- c(weight, rep("unweight",nn),rep("w1",nn),rep("w2",nn), rep("nonpara",nn),rep("cv",nn))
+    Name <- names(Results)[i]
+    alpha1 <- paste0("alpha1=-", stringr::str_extract(Name, "\\d+"))
+    alpha1s <- c(alpha1s, rep(alpha1,  nn*(dim(learned.rule.mse)[2]+1)))
+    yhatmeth <- paste0("contrast.est",tail(strsplit(Name,split='')[[1]],1))
+    contrast.est.meth <- c(contrast.est.meth, rep(yhatmeth, nn*(dim(learned.rule.mse)[2]+1)))
+    # boxplot(cv.rule.mse, main=paste0("n=", round(mean(unlist(results[,3])))), ylim=c(0,11))
+    # }
   }
+  weight <- factor(weight, levels = c("unweight","w1","w2","nonpara","cv"))
+  contrast.est.meth <- factor(contrast.est.meth, levels=c("contrast.est1","contrast.est2","contrast.est3"))
+  df <- data.frame(weight = weight, Value.MSE=Value.MSE, n=n, contrast.est.meth=contrast.est.meth,alpha1=alpha1s)
+  # means <- aggregate(Value.MSE ~ weight + contrast.est.meth, df, mean)
+  gp <- ggplot(df, aes(x=weight, y=Value.MSE, fill=contrast.est.meth)) + 
+    facet_wrap( ~ alpha1, nrow = 1) + geom_boxplot() +ggtitle(method)+
+    ## check how to add mean for each box
+    # stat_summary(fun.y = mean, geom = "errorbar", 
+                 # aes(ymax = ..y.., ymin = ..y.., group = contrast.est.meth),
+                 # width = 0.75, linetype = "dashed", position = position_dodge())
+    # stat_summary(fun.y=mean, geom="point",
+    #     aes(ymax = ..y.., ymin = ..y.., group = contrast.est.meth),
+    # #     shape=20, size=4, color="red", fill="red") ## add mean value in boxplot
+    # geom_point(data = means, aes(y = Value.MSE, x =  weight), 
+    #            position=position_dodge(width=.75), color = "white")
+    # 
+  print(gp)
 }
 
-  
+
+## contrast estimates MSE
+Value.MSE <- rule <- n <- weight <- contrast.est.meth <- alpha1s <- ctr.mse <- c()
+for (i in 1:length(Results)) {
+  # for (method in c("linear","tree")) {
+  results <- Results[[i]]
+  cv.rule.mse <- unlist(results[,3])
+  nn <- length(cv.rule.mse)
+  ctr.mse <- c(ctr.mse, unlist(results[,5]))
+  Name <- names(Results)[i]
+  alpha1 <- paste0("alpha1=-", stringr::str_extract(Name, "\\d+"))
+  alpha1s <- c(alpha1s, rep(alpha1,  nn))
+  yhatmeth <- paste0("contrast.est",tail(strsplit(Name,split='')[[1]],1))
+  contrast.est.meth <- c(contrast.est.meth, rep(yhatmeth, nn))
+  # boxplot(cv.rule.mse, main=paste0("n=", round(mean(unlist(results[,3])))), ylim=c(0,11))
+  # }
+}
+contrast.est.meth <- factor(contrast.est.meth, levels=c("contrast.est1","contrast.est2","contrast.est3"))
+df <- data.frame(ctr.mes=ctr.mse, contrast.est.meth=contrast.est.meth,alpha1=alpha1s)
+alpha1s <- alpha1s[-which(df$contrast.est.meth=="contrast.est1")]
+gp <- ggplot(df, aes(x=contrast.est.meth, y=ctr.mse)) + 
+  facet_wrap( ~ alpha1, nrow = 1) + geom_boxplot() +ggtitle(method)+
+  ## check how to add mean for each box
+  stat_summary(fun.y=mean, geom="point", shape=20, size=4, color="red", fill="red") ## add mean value in boxplot
+print(gp)
+
+
 i=5
 results <- Results[[i]]
 learned.rule.mse <- matrix(unlist(results[,1]), byrow = T, ncol=4)
@@ -191,44 +221,76 @@ df <- data.frame(weight = weight, Value.MSE=Value.MSE)
 ggplot(df, aes(x=weight, y=Value.MSE))+geom_boxplot()+ggtitle(names(Results)[i])+
   stat_summary(fun.y=mean, geom="point", shape=20, size=4, color="red", fill="red") ## add mean value in boxplot
 
-############### use RF in all Q #######################
-dbn <- "diff"; method="linear.VS"
-## fit RF of Y on all X and all A, get one Q(.,.) 
-load(paste0(path,"results_cv_nfold30_method",method,"_",dbn,"_dist_RF.Rdata"))
-## fit RF of Y on X for different A sperately, get Q_1(.) and Q_0(.)
-# load(paste0(path,"results_cv_nfold1_method",method,"_",dbn,"_dist.Rdata"))
-Value.MSE <- rule <- n <- weight <- contrast.est.meth <- alpha1s <- c()
-for (i in 1:length(Results)) {
-  # for (method in c("linear","tree")) {
+############ contain NN result ############
+path <- "/Users/lwu9/Documents/transfer_learner_dtr/"
+setwd(path)
+nfold <- 5; method <- "linear.VS"; dbn <- "diff"
+load(paste0(path,"results_cv_nfold", nfold, "_method",method,"_", dbn, "_dist_all_except_NN.Rdata"))
+allResults <- Results
+for (alpha1 in c(-8, -10)) {
+  load(paste0(path, "results_cv_nfold", nfold, "_method", method, "_alpha", abs(alpha1), "_", dbn, "_dist_NN.Rdata"))
+  allResults <- c(allResults, Results)
+}
+for (alpha1 in c(-8, -10)) {
+  load(paste0(path, "results_cv_nfoldNA", "_method", method, "_alpha", abs(alpha1), "_", dbn, "_benchmark.Rdata"))
+  allResults <- c(allResults, Results)
+}
+Results <- allResults; rm(allResults); print(names(Results))
+
+## Qm=1: fit RF of Y on X for different A sperately, get Q_1(.) and Q_0(.)
+## Qm=2: linear; Qm=3: NN
+Value.MSE <- rule <- n <- weight <- contrast.est.meth <- alpha1s <- Q.model <- ctr.Q<- c()
+for (i in 1:(length(Results)-2)) {
   results <- Results[[i]]
   learned.rule.mse <- matrix(unlist(results[,1]), byrow = T, ncol=4)
   cv.rule.mse <- unlist(results[,3])
   nn <- length(cv.rule.mse)
-  Value.MSE <- c(Value.MSE, learned.rule.mse[,1], learned.rule.mse[,2],
-                 learned.rule.mse[,3], learned.rule.mse[,4], cv.rule.mse)
+  Value.MSE <- c(Value.MSE, learned.rule.mse[,4], learned.rule.mse[,3],
+                 learned.rule.mse[,2], learned.rule.mse[,1], cv.rule.mse)
   n <- c(n, rep(round(mean(unlist(results[,4]))), nn*(dim(learned.rule.mse)[2]+1)))
   weight <- c(weight, rep("unweight",nn),rep("w1",nn),rep("w2",nn), rep("nonpara",nn),rep("cv",nn))
   Name <- names(Results)[i]
   alpha1 <- paste0("alpha1=-", stringr::str_extract(Name, "\\d+"))
   alpha1s <- c(alpha1s, rep(alpha1,  nn*(dim(learned.rule.mse)[2]+1)))
-  yhatmeth <- paste0("contrast.est",tail(strsplit(Name,split='')[[1]],1))
-  contrast.est.meth <- c(contrast.est.meth, rep(yhatmeth, nn*(dim(learned.rule.mse)[2]+1)))
-  # boxplot(cv.rule.mse, main=paste0("n=", round(mean(unlist(results[,3])))), ylim=c(0,11))
-  # }
+  contrst.est_Q.est <- paste0("contrast", strsplit(Name,split='yhatmeth')[[1]][2])
+  ctr.Q <- c(ctr.Q , rep( contrst.est_Q.est, nn*(dim(learned.rule.mse)[2]+1) ))
+  # yhatmeth_Qm <- strsplit(strsplit(Name,split='yhatmeth')[[1]][2], split="Qm")[[1]]
+  # yhatmeth <- paste0("contrast.est", yhatmeth_Qm[1])
+  # contrast.est.meth <- c(contrast.est.meth, rep(yhatmeth, nn*(dim(learned.rule.mse)[2]+1)))
+  # Qm <- paste0("Q.est", yhatmeth_Qm[2])
+  # Q.model <- c(Q.model, rep(Qm, nn*(dim(learned.rule.mse)[2]+1) ))
 }
-weight <- factor(weight, levels = c("unweight","w1","w2","nonpara","cv"))
-contrast.est.meth <- factor(contrast.est.meth, levels=c("contrast.est1","contrast.est2","contrast.est3"))
-df <- data.frame(weight = weight, Value.MSE=Value.MSE, n=n, contrast.est.meth=contrast.est.meth,alpha1=alpha1s)
-gp <- ggplot(df, aes(x=weight, y=Value.MSE, fill=contrast.est.meth)) + scale_fill_manual(values=c( "#E69F00", "#56B4E9"))+
-  facet_wrap( ~ alpha1, nrow = 1) + geom_boxplot() +ggtitle(paste0(method,"; ", dbn, " dbn; RF"))+
+for (i in (length(Results)-1):length(Results)) {
+  ## the last two is for benchmark
+  results <- Results[[i]]
+  bm.mse <- unlist(results[,1])
+  Value.MSE <- c(Value.MSE, bm.mse)
+  nn <- length(bm.mse)
+  n <- c(n, rep(round(mean(unlist(results[,2]))), nn))
+  weight <-  c(weight, rep("benchmark", nn))
+  Name <- names(Results)[i]
+  alpha1 <- paste0("alpha1=-", stringr::str_extract(Name, "\\d+"))
+  alpha1s <- c(alpha1s, rep(alpha1, nn))
+  ctr.Q <- c(ctr.Q, rep("true.ctr_w", nn))
+}
+weight <- factor(weight, levels = c("unweight","w1","w2","nonpara","cv","benchmark"))
+ctr.Q <- factor(ctr.Q, levels=c("contrast1Qm0","contrast2Qm1","contrast2Qm2","contrast2Qm3","contrast3Qm1",
+                                            "contrast3Qm2","contrast3Qm3","contrast4Qm1","contrast4Qm2","contrast4Qm3",
+                                            "true.ctr_w"))
+df <- data.frame(weight = weight, Value.MSE=Value.MSE, n=n, ctr.Q=ctr.Q,alpha1=alpha1s)
+gp <- ggplot(df, aes(x=weight, y=Value.MSE, fill= ctr.Q)) + #scale_fill_manual(values=c("#999999", "#E69F00", "#56B4E9"))+
+  facet_wrap( ~ alpha1, nrow = 2) + geom_boxplot() +ggtitle(paste0(method,"; ", dbn, " dbn"))+
   ## check how to add mean for each box
   stat_summary(fun.y = mean, color = "red", position = position_dodge(0.75),
                geom = "point", shape = 20, size = 2.5,
                show.legend = FALSE) ## add mean value in boxplot
 print(gp)
-ggsave(paste0(method,"_", dbn, "_RF.png"))
+method <- gsub("\\.","_",method)
+ggsave(paste0(method,"_", dbn, "_all.png"))
+
+
 ## ctr.mse
-Value.MSE <- rule <- n <- ctr.mses <- contrast.est.meth <- alpha1s <- c()
+Value.MSE <- rule <- n <- ctr.mses <- contrast.est.meth <- alpha1s <- ctr.Q <- c()
 for (i in 1:length(Results)) {
   # for (method in c("linear","tree")) {
   results <- Results[[i]]
@@ -237,17 +299,22 @@ for (i in 1:length(Results)) {
   ctr.mses <- c(ctr.mses, ctr.mse)
   n <- c(n, rep(round(mean(unlist(results[,4]))), nn))
   Name <- names(Results)[i]
+  
+  print(paste("contrast est MSE:", mean(ctr.mse), "with sd", sd(ctr.mse), Name))
   alpha1 <- paste0("alpha1=-", stringr::str_extract(Name, "\\d+"))
   alpha1s <- c(alpha1s, rep(alpha1,  nn))
   yhatmeth <- paste0("contrast.est",tail(strsplit(Name,split='')[[1]],1))
   contrast.est.meth <- c(contrast.est.meth, rep(yhatmeth, nn))
+  contrst.est_Q.est <- paste0("contrast", strsplit(Name,split='yhatmeth')[[1]][2])
+  ctr.Q <- c(ctr.Q, rep( contrst.est_Q.est, nn) )
   # boxplot(cv.rule.mse, main=paste0("n=", round(mean(unlist(results[,3])))), ylim=c(0,11))
   # }
 }
-contrast.est.meth <- factor(contrast.est.meth, levels=c("contrast.est2","contrast.est3"))
-df <- data.frame(ctr.mses=ctr.mses, n=n, contrast.est.meth=contrast.est.meth,alpha1=alpha1s)
-gp <- ggplot(df, aes(x=contrast.est.meth, y=ctr.mses)) + #scale_fill_manual(values=c( "#E69F00", "#56B4E9"))+
-  facet_wrap( ~ alpha1, nrow = 1) + geom_boxplot() +ggtitle(paste0(method,"; ", dbn, " dbn; RF"))+
+ctr.Q <- factor(ctr.Q, levels=c("contrast1Qm0","contrast2Qm1","contrast2Qm2","contrast2Qm3","contrast3Qm1",
+                                            "contrast3Qm2","contrast3Qm3","contrast4Qm1","contrast4Qm2","contrast4Qm3"))
+df <- data.frame(ctr.mses=ctr.mses, n=n, ctr.Q=ctr.Q,alpha1=alpha1s)
+gp <- ggplot(df, aes(x=ctr.Q, y=ctr.mses)) + # scale_fill_manual(values=c( "#999999", "#E69F00", "#56B4E9"))+
+  facet_wrap( ~ alpha1, nrow = 2) + geom_boxplot() +ggtitle(paste0(method,"; ", dbn, " dbn"))+
   ## check how to add mean for each box
   stat_summary(fun.y = mean, color = "red", position = position_dodge(0.75),
                geom = "point", shape = 20, size = 2.5,
