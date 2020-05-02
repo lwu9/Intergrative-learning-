@@ -184,6 +184,7 @@ learn_rule <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, x, N, y.star.hat.
         #               gradient.check = FALSE, print.level=0, x.in.rct=x.in.rct, 
         #               y.star.hat.in.rct = y.star.hat.in.rct, weight=w.tilde, obj.value=T)
         starting.values <- runif(p+1, -1, 1)
+        # starting.values <- rep(0, p+1)
         gen <- genoud(fn, nvars=p+1, max=FALSE, optim.method = 'Nelder-Mead', pop.size=3000, BFGS = FALSE, 
                       starting.values = starting.values, Domains = cbind(rep(-1, p+1), rep(1, p+1)),
                       gradient.check = FALSE, print.level=0, x.in.rct=x.in.rct, 
@@ -237,6 +238,7 @@ learn_rule_given_w.tilde <- function(y.in.rct, x.in.rct, a.in.rct, y.star.hat.in
       #               gradient.check = FALSE, print.level=0, x.in.rct=x.in.rct, 
       #               y.star.hat.in.rct = y.star.hat.in.rct, weight=w.tilde, obj.value=T)
       starting.values <- runif(p+1, -1, 1)
+      # starting.values <- rep(0, p+1)
       gen <- genoud(fn, nvars=p+1, max=FALSE, optim.method = 'Nelder-Mead', pop.size=3000, BFGS = FALSE, 
                     starting.values = starting.values, Domains = cbind(rep(-1, p+1), rep(1, p+1)),
                     gradient.check = FALSE, print.level=0, x.in.rct=x.in.rct, 
@@ -502,10 +504,13 @@ cv.real.data.new <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, N=NA, nfold
           w.tilde.train <- learn_rule(y.in.rct[train.ind], x.in.rct[train.ind, ], a.in.rct[train.ind], 
                                       x.in.rwe[train.ind.rwe, ], NA, NA, NA,
                                       w.method=w.method, method=method, only.weight=T, misspecify=misspecify)
+          w.tilde.train <- w.tilde.train/sum(w.tilde.train)
           y.star.hat.in.rct <- est.contrast(a.in.rct[train.ind], x.in.rct[train.ind, ], y.in.rct[train.ind], meth=y.hat.meth, 
                                             psm=1, Qm=Qm, regr.direct=F, weighted.para=weighted.para, w.tilde=w.tilde.train, family=family)
-          action <- learn_rule_given_w.tilde(y.in.rct[train.ind], x.in.rct[train.ind, ], a.in.rct[train.ind], y.star.hat.in.rct, 
-                                             x.in.rct[eval.ind, ], method, prob.one = NA, w.tilde = w.tilde.train, iter=iter)$action
+          beta.hat.star <- get_eta(x.in.rct[train.ind,], w.tilde=w.tilde.train, y.star.hat.in.rct)
+          action <- as.numeric(x.in.rct[eval.ind, ] %*% beta.hat.star > 0)
+          # action <- learn_rule_given_w.tilde(y.in.rct[train.ind], x.in.rct[train.ind, ], a.in.rct[train.ind], y.star.hat.in.rct, 
+          #                                    x.in.rct[eval.ind, ], method, prob.one = NA, w.tilde = w.tilde.train, iter=iter)$action
           value <- value_est(y.in.rct[eval.ind], x.in.rct[eval.ind, ], a.in.rct[eval.ind], 
                              as.numeric(as.character(action)), w.tilde.normalized.eval, 
                              ipw=ipw, weighted.para=weighted.para, family=family)$value
@@ -532,7 +537,7 @@ cv.real.data.new <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, N=NA, nfold
   return(list(num=which.max(values), values=values, values.sd=apply(values.multisplit, 2, sd)))
 }
 
-cv.new.hinge <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, N, nfold, prob.one,
+cv.new.hinge <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, N, nfold, prob.one, y.hat.meth, Qm,
                    ipw=F, method, baseline, contrast, x, calculate.true.val=F, misspecify=F, weighted.para, family="gaussian") {
   #### consider to use weighted.para in both learn and evaluate the linear rule in the splitted samples ####
   #### x is only needed when calculate.true.val=TRUE ####
@@ -574,6 +579,72 @@ cv.new.hinge <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, N, nfold, prob.
           beta.hat.star <- result$getValue(Betas)
           action <- as.numeric(x.in.rct[eval.ind, ] %*% beta.hat.star > 0)
           # w.tilde.normalized.train <- w.tilde.train / sum(w.tilde.train)
+          value <- value_est(y.in.rct[eval.ind], x.in.rct[eval.ind, ], a.in.rct[eval.ind], 
+                             action, w.tilde.normalized.eval, ipw=ipw, weighted.para=T, family=family)$value
+          # value <- value_est(y.in.rct[eval.ind]*w.tilde.normalized, sweep(x.in.rct[eval.ind, ], MARGIN=1, w.tilde.normalized, `*`), 
+          #                    a.in.rct[eval.ind], as.numeric(as.character(action)), ps=rep(0.5, n-round(n*prop.train)), ipw=ipw)$value
+          if (is.na(value)) {
+            # print(w.tilde)
+            print(paste(method, w.method))
+            stop("invalid#####")
+          }
+          
+          values <- c(values, value)
+          ## true values
+          if (calculate.true.val) {
+            action <- learn_rule_given_w.tilde(y.in.rct[train.ind], x.in.rct[train.ind, ], a.in.rct[train.ind], y.star.hat.in.rct, 
+                                               x, method, prob.one = NA, w.tilde = w.tilde.train)$action
+            true.values <- c(true.values, mean(baseline + as.numeric(as.character(action))*contrast))
+          } else {
+            true.values <- c(true.values, 0)
+          }
+        }
+        values.multisplit <- rbind(values.multisplit, values)
+        values.true.multisplit <-rbind(values.true.multisplit, true.values) 
+      }, error = function(e) {
+        return("error")
+      }, warning = function(w) {
+        return("warning")
+      }
+    )
+    if (typeof(check)=="character") nfold <- nfold + 1
+  }
+  values <- colMeans(values.multisplit)
+  return(list(num=which.max(values), values=values, true.values= colMeans(values.true.multisplit), values.sd=apply(values.multisplit, 2, sd)))
+}
+cv.new.sramp <- function(y.in.rct, x.in.rct, a.in.rct, x.in.rwe, N, nfold, prob.one, y.hat.meth, Qm,
+                         ipw=F, method, baseline, contrast, x, calculate.true.val=F, misspecify=F, weighted.para, family="gaussian") {
+  #### consider to use weighted.para in both learn and evaluate the linear rule in the splitted samples ####
+  #### x is only needed when calculate.true.val=TRUE ####
+  n <- dim(x.in.rct)[1]
+  m <- dim(x.in.rwe)[1]
+  p <- dim(x.in.rct)[2]-1
+  prop.train <- 0.5 ## proportion of training rct 
+  values.multisplit <- values.true.multisplit <- c()
+  k <- 0
+  while (k < nfold) {
+    k <- k + 1
+    train.ind <- sample(1:n, size=round(n*prop.train))
+    eval.ind <- setdiff(1:n, train.ind)
+    train.ind.rwe <- sample(1:m, size=round(m*prop.train))
+    eval.ind.rwe <- setdiff(1:m, train.ind.rwe)
+    values <- true.values <- c()
+    check <- tryCatch(
+      { 
+        #### all use nonparametric weights for value estimate ####
+        w.tilde.eval <- learn_rule(y.in.rct[eval.ind], x.in.rct[eval.ind, ], a.in.rct[eval.ind], 
+                                   x.in.rwe[eval.ind.rwe, ], NA, N-round(N*prop.train), NA,
+                                   w.method=4, method=method, only.weight=T, misspecify=misspecify)
+        w.tilde.normalized.eval <- w.tilde.eval / sum(w.tilde.eval) #* length(eval.ind)
+        for (w.method in 4:1) {
+          w.tilde.train <- learn_rule(y.in.rct[train.ind], x.in.rct[train.ind, ], a.in.rct[train.ind], 
+                                      x.in.rwe[train.ind.rwe, ], NA, round(N*prop.train), NA,
+                                      w.method=w.method, method=method, only.weight=T, misspecify=misspecify)
+          w.tilde.train <- w.tilde.train/sum(w.tilde.train)
+          y.star.hat.in.rct <- est.contrast(a.in.rct[train.ind], x.in.rct[train.ind, ], y.in.rct[train.ind], meth=y.hat.meth, 
+                                            psm=1, Qm=Qm, regr.direct=F, weighted.para=weighted.para, w.tilde=w.tilde.train, family=family)
+          beta.hat.star <- get_eta(x.in.rct[train.ind,], w.tilde.train, y.star.hat.in.rct)
+          action <- as.numeric(x.in.rct[eval.ind, ] %*% beta.hat.star > 0)
           value <- value_est(y.in.rct[eval.ind], x.in.rct[eval.ind, ], a.in.rct[eval.ind], 
                              action, w.tilde.normalized.eval, ipw=ipw, weighted.para=T, family=family)$value
           # value <- value_est(y.in.rct[eval.ind]*w.tilde.normalized, sweep(x.in.rct[eval.ind, ], MARGIN=1, w.tilde.normalized, `*`), 
@@ -901,5 +972,46 @@ Q.est <- function(x, y, A, Qm, weighted.para, w.tilde, family="gaussian") {
 }
 
 
-
+######## functions used for smooth ramp loss
+phi_su <- function(s, u) {
+  phis <- (s-u)**2
+  phis[u >= s] <- 0 
+  phis[u < s-1] <- (2*s-2*u-1)[u < s-1]
+  return(phis)
+}
+phi_0_grad <- function(u) {
+  phis <- 2*u
+  phis[u >= 0] <- 0
+  phis[u < -1] <- -2
+  return(phis)
+}
+smooth.ramp.loss <- function(eta, betas, x.in.rct, y.star.hat.in.rct, w.tilde) {
+  f <- x.in.rct %*% as.matrix(eta, ncol=1)
+  u <- (2*as.numeric(y.star.hat.in.rct > 0) - 1) * f
+  cav <- sum(betas*u)
+  cvx <- sum(phi_su(1, u) * abs(y.star.hat.in.rct) * w.tilde)
+  return(cvx+cav)
+}
+cal_betas <- function(y.star.hat.in.rct, u, w.tilde) {
+  betas <- - phi_0_grad(u) * abs(y.star.hat.in.rct) * w.tilde
+  return(betas)
+}
+get_eta <- function(x.in.rct, w.tilde, y.star.hat.in.rct, eps=10^(-6), maxit=10^3) {
+  betas.t <- 2*abs(y.star.hat.in.rct)
+  p <- dim(x.in.rct)[2]-1
+  for (t in 1:maxit) {
+    # runif(p+1, -1, 1)
+    opt <- optim(rep(0, p+1), smooth.ramp.loss, method = 'L-BFGS-B', control = list(maxit=10000),
+                 betas=betas.t, x.in.rct=x.in.rct, y.star.hat.in.rct=y.star.hat.in.rct, w.tilde=w.tilde)
+    eta.hat <- opt$par
+    u <- (2*as.numeric(y.star.hat.in.rct > 0) - 1) * (x.in.rct %*% as.matrix(eta.hat, ncol=1))
+    betas.tplus1 <- cal_betas(y.star.hat.in.rct, u, w.tilde)
+    if (max(betas.t-betas.tplus1) <= eps) {
+      return(eta.hat)
+    } else {
+      betas.t <- betas.tplus1
+    }
+  }
+  if (t==maxit) stop("Not converge within max iterations")
+}
 
